@@ -17,7 +17,6 @@ namespace VideoPlayer
         private string? _currentFilePath;
         private DispatcherTimer? _timelineUpdateTimer;
         private bool _isUserDraggingSlider = false;
-        private bool _isUpdatingSliderProgrammatically = false;
         private bool _wasPlayingBeforeDrag = false;
 
         // Marker positions in milliseconds
@@ -26,13 +25,55 @@ namespace VideoPlayer
         private bool _isLooping = false;
 
         // Frame rate (approximate, will be calculated from video)
-        private double _frameDurationMs = 33.33; // Default ~30fps
+        private double _frameDurationMs = 1000 / 25.0; // 1000 / fps
+
+        // Volume control
+        private bool _isMuted = false;
+        private int _volumeBeforeMute = 100;
+
+        private bool _isUserSelecting = false;
+
+        // Playback rate
+        private float _currentPlaybackRate = 1.0f;
+
+        // Logger window
+        private LoggerWindow? _loggerWindow;
 
         public MainWindow()
         {
             InitializeComponent();
             InitializeVLC();
             InitializeTimeline();
+            AttachTimelineSliderEvents();
+            AttachKeyboardShortcuts();
+        }
+
+        private void AttachKeyboardShortcuts()
+        {
+            // Attach keyboard event handler for shortcuts
+            this.KeyDown += MainWindow_KeyDown;
+            Logger.Debug("Keyboard shortcuts attached");
+        }
+
+        private void MainWindow_KeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+        {
+            // F12 - Open Logger Window
+            if (e.Key == Avalonia.Input.Key.F12)
+            {
+                Logger.Info("F12 pressed - Opening logger window");
+                ShowLoggerButton_Click(null, new RoutedEventArgs());
+                e.Handled = true;
+            }
+        }
+
+        private void AttachTimelineSliderEvents()
+        {
+            // Attach pointer events with handledEventsToo = true to receive events even if handled by child controls
+            TimelineSlider.AddHandler(PointerPressedEvent, TimelineSlider_PointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+            TimelineSlider.AddHandler(PointerReleasedEvent, TimelineSlider_PointerReleased, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+            TimelineSlider.AddHandler(PointerMovedEvent, TimelineSlider_PointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel, handledEventsToo: true);
+
+            Logger.Debug("Timeline slider pointer events attached with handledEventsToo=true");
         }
 
         private void InitializeTimeline()
@@ -40,7 +81,7 @@ namespace VideoPlayer
             // Create timer to update timeline
             _timelineUpdateTimer = new DispatcherTimer
             {
-                Interval = TimeSpan.FromMilliseconds(33) // ~30 FPS update rate
+                Interval = TimeSpan.FromMilliseconds(1000 / 30) // ~30 FPS update rate
             };
             _timelineUpdateTimer.Tick += TimelineUpdateTimer_Tick;
         }
@@ -53,18 +94,47 @@ namespace VideoPlayer
                 _libVLC = new LibVLC("--no-xlib");
                 _mediaPlayer = new MediaPlayer(_libVLC);
 
+                // Attach VLC log event handler
+                _libVLC.Log += LibVLC_Log;
+
+                Logger.Info("VLC initialized successfully");
+
                 // Ensure VideoView is properly initialized and attached
                 this.Opened += (sender, args) =>
                 {
                     if (VideoView != null && _mediaPlayer != null)
                     {
                         VideoView.MediaPlayer = _mediaPlayer;
+                        Logger.Debug("VideoView attached to MediaPlayer");
                     }
                 };
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error initializing VLC: {ex.Message}");
+                Logger.Error($"Error initializing VLC: {ex.Message}");
+            }
+        }
+
+        private void LibVLC_Log(object? sender, LogEventArgs e)
+        {
+            // Route VLC logs to our Logger window based on VLC log level
+            string message = $"[VLC/{e.Module}] {e.Message}";
+
+            switch (e.Level)
+            {
+                case LibVLCSharp.Shared.LogLevel.Debug:
+                    Logger.Debug(message);
+                    break;
+                case LibVLCSharp.Shared.LogLevel.Notice:
+                case LibVLCSharp.Shared.LogLevel.Warning:
+                    Logger.Warning(message);
+                    break;
+                case LibVLCSharp.Shared.LogLevel.Error:
+                    Logger.Error(message);
+                    break;
+                default:
+                    Logger.Info(message);
+                    break;
             }
         }
 
@@ -113,11 +183,17 @@ namespace VideoPlayer
 
             try
             {
+                Logger.Info($"Loading video: {System.IO.Path.GetFileName(filePath)}");
                 var media = new Media(_libVLC, filePath, FromType.FromPath);
                 _mediaPlayer.Play(media);
 
                 // Hide the overlay when video starts
                 NoVideoOverlay.IsVisible = false;
+                Logger.Debug("Video overlay hidden, playback started");
+
+                // Update Play/Pause button since video autostarts
+                PlayPauseButton.Content = "⏸ Pause";
+                Logger.Debug("Play button updated to Pause (video autostarted)");
 
                 // Enable control buttons
                 PlayPauseButton.IsEnabled = true;
@@ -130,6 +206,19 @@ namespace VideoPlayer
                 ResetMarkersButton.IsEnabled = true;
                 SeekTimeTextBox.IsEnabled = true;
                 SeekToTimeButton.IsEnabled = true;
+                VolumeSlider.IsEnabled = true;
+                MuteButton.IsEnabled = true;
+                PlaybackRate1xButton.IsEnabled = true;
+                PlaybackRate2xButton.IsEnabled = true;
+                PlaybackRate4xButton.IsEnabled = true;
+
+                // Set initial volume
+                _mediaPlayer.Volume = (int)VolumeSlider.Value;
+
+                // Set initial playback rate
+                _currentPlaybackRate = 1.0f;
+                _mediaPlayer.SetRate(_currentPlaybackRate);
+                UpdatePlaybackRateButtons();
 
                 // Start timeline update timer
                 _timelineUpdateTimer?.Start();
@@ -150,8 +239,12 @@ namespace VideoPlayer
                             // Verify media is seekable
                             if (!_mediaPlayer.IsSeekable)
                             {
-                                Console.WriteLine("Warning: Media is not seekable");
+                                Logger.Warning("Media is not seekable");
                                 TimelineSlider.IsEnabled = false;
+                            }
+                            else
+                            {
+                                Logger.Debug("Media is seekable and ready");
                             }
                         }
                     });
@@ -159,7 +252,7 @@ namespace VideoPlayer
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error loading video: {ex.Message}");
+                Logger.Error($"Error loading video: {ex.Message}");
             }
         }
 
@@ -172,11 +265,13 @@ namespace VideoPlayer
             {
                 _mediaPlayer.Pause();
                 PlayPauseButton.Content = "▶ Play";
+                Logger.Debug("Playback paused");
             }
             else
             {
                 _mediaPlayer.Play();
                 PlayPauseButton.Content = "⏸ Pause";
+                Logger.Debug("Playback resumed");
             }
         }
 
@@ -185,12 +280,22 @@ namespace VideoPlayer
             _isLooping = !_isLooping;
             LoopButton.Content = _isLooping ? "🔁 Loop: ON" : "🔁 Loop: OFF";
             LoopButton.Background = _isLooping ? new SolidColorBrush(Color.Parse("#007ACC")) : new SolidColorBrush(Color.Parse("#2D2D30"));
+            Logger.Info($"Loop mode {(_isLooping ? "enabled" : "disabled")}");
         }
 
         private void TimelineUpdateTimer_Tick(object? sender, EventArgs e)
         {
-            if (_mediaPlayer == null || _isUserDraggingSlider)
+            if (_mediaPlayer == null)
+            {
+                Logger.Debug("[TIMER] Tick skipped - No media player");
                 return;
+            }
+
+            if (_isUserDraggingSlider)
+            {
+                Logger.Debug("[TIMER] Tick BLOCKED - User is dragging slider");
+                return;
+            }
 
             try
             {
@@ -199,11 +304,9 @@ namespace VideoPlayer
 
                 if (duration > 0)
                 {
-                    // Update timeline slider (prevent triggering ValueChanged event)
-                    _isUpdatingSliderProgrammatically = true;
+                    // Update timeline slider
                     TimelineSlider.Maximum = duration;
                     TimelineSlider.Value = currentTime;
-                    _isUpdatingSliderProgrammatically = false;
 
                     // Update time displays
                     CurrentTimeText.Text = FormatTime(currentTime);
@@ -216,126 +319,85 @@ namespace VideoPlayer
                     if (_isLooping && currentTime >= _endMarkerMs)
                     {
                         _mediaPlayer.Time = _startMarkerMs;
+                        Logger.Info($"[LOOP] Looping back from {FormatTime(currentTime)} to {FormatTime(_startMarkerMs)}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error updating timeline: {ex.Message}");
+                Logger.Error($"[TIMER] Error updating timeline: {ex.Message}");
             }
+
         }
 
         private void TimelineSlider_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
         {
+            Logger.Info("[TIMELINE] ========================================");
+            Logger.Info("[TIMELINE] Slider pressed - User interaction started");
+
+            // CRITICAL: Set this flag IMMEDIATELY to stop the timer from updating
+            _isUserDraggingSlider = true;
+            _isUserSelecting = true;
+
+            Logger.Info("[TIMELINE] User dragging flag set to TRUE - Timer updates will be BLOCKED");
+
             if (_mediaPlayer != null)
             {
-                Console.WriteLine($"[TIMELINE] Slider pressed - Current video position: {FormatTime(_mediaPlayer.Time)} ({_mediaPlayer.Time}ms)");
+                Logger.Info($"[TIMELINE] Video position at press: {FormatTime(_mediaPlayer.Time)} ({_mediaPlayer.Time}ms)");
+                Logger.Info($"[TIMELINE] Slider value at press: {FormatTime((long)TimelineSlider.Value)} ({TimelineSlider.Value}ms)");
+
+                // Remember playback state
+                _wasPlayingBeforeDrag = _mediaPlayer.IsPlaying;
+                Logger.Info($"[TIMELINE] Was playing before interaction: {_wasPlayingBeforeDrag}");
             }
             else
             {
-                Console.WriteLine("[TIMELINE] Slider pressed - No media player available");
-            }
-
-            _isUserDraggingSlider = true;
-
-            // Remember playback state but don't pause yet
-            if (_mediaPlayer != null)
-            {
-                _wasPlayingBeforeDrag = _mediaPlayer.IsPlaying;
-                Console.WriteLine($"[TIMELINE] Was playing before drag: {_wasPlayingBeforeDrag}");
+                Logger.Warning("[TIMELINE] Slider pressed - No media player available");
             }
         }
 
         private void TimelineSlider_PointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)
         {
-            // Update preview time while dragging
+            // Just log the drag - ValueChanged will update the time display
             if (_isUserDraggingSlider && _mediaPlayer != null)
             {
                 long targetTime = (long)TimelineSlider.Value;
-                CurrentTimeText.Text = FormatTime(targetTime);
-                Console.WriteLine($"[TIMELINE] Dragging to: {FormatTime(targetTime)} ({targetTime}ms)");
+                Logger.Debug($"[TIMELINE] Dragging to: {FormatTime(targetTime)} ({targetTime}ms)");
             }
         }
 
         private void TimelineSlider_PointerReleased(object? sender, Avalonia.Input.PointerReleasedEventArgs e)
         {
-            Console.WriteLine("[TIMELINE] ========================================");
-            Console.WriteLine("[TIMELINE] Slider released - Initiating seek operation");
+            Logger.Info("[TIMELINE] ========================================");
+            Logger.Info("[TIMELINE] Slider released");
+
+            // Seeking is handled by ValueChanged during dragging
+            // Just release the dragging flag to allow timer updates
             _isUserDraggingSlider = false;
-
-            if (_mediaPlayer != null && _mediaPlayer.IsSeekable)
-            {
-                try
-                {
-                    long targetTime = (long)TimelineSlider.Value;
-                    long duration = _mediaPlayer.Length;
-                    long positionBeforeSeek = _mediaPlayer.Time;
-
-                    Console.WriteLine($"[TIMELINE] Video duration: {FormatTime(duration)} ({duration}ms)");
-                    Console.WriteLine($"[TIMELINE] Target seek time: {FormatTime(targetTime)} ({targetTime}ms)");
-                    Console.WriteLine($"[TIMELINE] Position before seek: {FormatTime(positionBeforeSeek)} ({positionBeforeSeek}ms)");
-                    Console.WriteLine($"[TIMELINE] Is seekable: {_mediaPlayer.IsSeekable}");
-
-                    if (duration > 0 && targetTime >= 0 && targetTime <= duration)
-                    {
-                        Console.WriteLine($"[SEEK] Performing seek to {targetTime}ms...");
-
-                        // Directly set the Time property - this is the most straightforward approach
-                        _mediaPlayer.Time = targetTime;
-
-                        // Wait a moment for seek to complete, then verify position
-                        Task.Run(async () =>
-                        {
-                            await Task.Delay(100); // Give VLC time to seek
-                            await Dispatcher.UIThread.InvokeAsync(() =>
-                            {
-                                if (_mediaPlayer != null)
-                                {
-                                    long actualPosition = _mediaPlayer.Time;
-                                    long difference = Math.Abs(actualPosition - targetTime);
-
-                                    Console.WriteLine($"[SEEK] Seek completed!");
-                                    Console.WriteLine($"[SEEK] Target position: {FormatTime(targetTime)} ({targetTime}ms)");
-                                    Console.WriteLine($"[SEEK] Actual position: {FormatTime(actualPosition)} ({actualPosition}ms)");
-                                    Console.WriteLine($"[SEEK] Difference: {difference}ms");
-
-                                    if (difference > 500)
-                                    {
-                                        Console.WriteLine($"[SEEK] ⚠ Warning: Large seek difference detected!");
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine($"[SEEK] ✓ Seek successful (within tolerance)");
-                                    }
-                                }
-                            });
-                        });
-                    }
-                    else
-                    {
-                        Console.WriteLine($"[SEEK] ✗ Invalid seek range: {targetTime} not in [0, {duration}]");
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[SEEK] ✗ Error during seek: {ex.Message}");
-                    Console.WriteLine($"[SEEK] Stack trace: {ex.StackTrace}");
-                }
-            }
-            else
-            {
-                Console.WriteLine($"[SEEK] ✗ Cannot seek - MediaPlayer null: {_mediaPlayer == null}, Seekable: {_mediaPlayer?.IsSeekable}");
-            }
-
-            Console.WriteLine("[TIMELINE] ========================================");
+            _isUserSelecting = true;
+            Logger.Info("[TIMELINE] User dragging flag set to FALSE - Timer updates will RESUME");
+            Logger.Info("[TIMELINE] ========================================");
         }
 
         private void TimelineSlider_ValueChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
         {
-            // Only update time display when user is dragging, not during programmatic updates
-            if (_isUserDraggingSlider && !_isUpdatingSliderProgrammatically && _mediaPlayer != null)
+            // Update time display when slider value changes
+            if (_mediaPlayer != null)
             {
                 CurrentTimeText.Text = FormatTime((long)e.NewValue);
+
+                // Only set media player time when user is dragging (not during timer updates)
+                if (_isUserDraggingSlider || _isUserSelecting)
+                {
+                    _mediaPlayer.Time = (long)e.NewValue;
+                    Logger.Debug($"[SLIDER] ValueChanged (user drag): Seeking to {FormatTime((long)e.NewValue)}");
+
+                    _isUserSelecting = false;
+                }
+                else
+                {
+                    // Logger.Debug($"[SLIDER] ValueChanged (timer update): {FormatTime((long)e.NewValue)}");
+                }
             }
         }
 
@@ -349,6 +411,7 @@ namespace VideoPlayer
                     _startMarkerMs = Math.Max(0, _endMarkerMs - 1000);
                 }
                 UpdateMarkerDisplay();
+                Logger.Info($"Start marker set to {FormatTime(_startMarkerMs)}");
             }
         }
 
@@ -362,6 +425,7 @@ namespace VideoPlayer
                     _endMarkerMs = Math.Min(_mediaPlayer.Length, _startMarkerMs + 1000);
                 }
                 UpdateMarkerDisplay();
+                Logger.Info($"End marker set to {FormatTime(_endMarkerMs)}");
             }
         }
 
@@ -372,6 +436,7 @@ namespace VideoPlayer
                 _startMarkerMs = 0;
                 _endMarkerMs = _mediaPlayer.Length;
                 UpdateMarkerDisplay();
+                Logger.Info("Markers reset to video start and end");
             }
         }
 
@@ -390,16 +455,17 @@ namespace VideoPlayer
             if (duration <= 0)
                 return;
 
-            // Calculate marker positions - center them by accounting for their width
+            // Calculate marker positions - align with slider thumb center
             double sliderWidth = TimelineSlider.Bounds.Width;
             double markerWidth = StartMarkerVisual.Bounds.Width; // Both markers have same width (3px)
 
-            // Calculate the position ratio and subtract half the marker width to center it
+            // Calculate the position ratio
             double startPositionRatio = (double)_startMarkerMs / duration;
             double endPositionRatio = (double)_endMarkerMs / duration;
 
+            // Position aligned with slider thumb center
             double startPosition = (sliderWidth * startPositionRatio) - (markerWidth / 2);
-            double endPosition = (sliderWidth * endPositionRatio) - (markerWidth / 2);
+            double endPosition = (sliderWidth * endPositionRatio) - (markerWidth / 2) - 2;
 
             // Update marker visuals
             StartMarkerVisual.IsVisible = true;
@@ -415,6 +481,7 @@ namespace VideoPlayer
                 long currentTime = _mediaPlayer.Time;
                 long newTime = Math.Max(0, currentTime - (long)_frameDurationMs);
                 _mediaPlayer.Time = newTime;
+                Logger.Debug($"Previous frame: {FormatTime(currentTime)} -> {FormatTime(newTime)}");
             }
         }
 
@@ -426,6 +493,7 @@ namespace VideoPlayer
                 long duration = _mediaPlayer.Length;
                 long newTime = Math.Min(duration, currentTime + (long)_frameDurationMs);
                 _mediaPlayer.Time = newTime;
+                Logger.Debug($"Next frame: {FormatTime(currentTime)} -> {FormatTime(newTime)}");
             }
         }
 
@@ -444,11 +512,13 @@ namespace VideoPlayer
                 {
                     _mediaPlayer.Time = timeMs;
                     SeekTimeTextBox.Text = string.Empty;
+                    Logger.Info($"Seek to time: {FormatTime(timeMs)}");
                 }
                 else
                 {
                     // Invalid time - show error in textbox
                     SeekTimeTextBox.Text = "Invalid range!";
+                    Logger.Warning($"Invalid seek time range: {timeText} -> {timeMs}ms (duration: {duration}ms)");
                     Task.Run(async () =>
                     {
                         await Task.Delay(2000);
@@ -464,6 +534,7 @@ namespace VideoPlayer
             {
                 // Invalid format - show error in textbox
                 SeekTimeTextBox.Text = "Invalid format!";
+                Logger.Warning($"Invalid seek time format: {timeText}");
                 Task.Run(async () =>
                 {
                     await Task.Delay(2000);
@@ -524,86 +595,151 @@ namespace VideoPlayer
                 milliseconds = 0;
 
             TimeSpan time = TimeSpan.FromMilliseconds(milliseconds);
-            return $"{(int)time.TotalHours:D2}:{time.Minutes:D2}:{time.Seconds:D2}";
+            return $"{(int)time.TotalHours:D2}:{time.Minutes:D2}:{time.Seconds:D2}.{time.Milliseconds:D3}";
         }
 
-        private void UpdateMetadata()
+        private async void UpdateMetadata()
         {
-            if (_mediaPlayer == null || _mediaPlayer.Media == null)
+            if (_mediaPlayer == null || _mediaPlayer.Media == null || string.IsNullOrEmpty(_currentFilePath))
+            {
+                ResetMetadataDisplay();
                 return;
+            }
 
             try
             {
                 var media = _mediaPlayer.Media;
 
-                // Parse media to get metadata (with timeout)
-                _ = media.Parse(MediaParseOptions.ParseLocal, 5000);
+                // Extract comprehensive metadata using helper class
+                var mediaInfo = await VideoMetadataExtractor.ExtractMetadataAsync(media, _currentFilePath);
 
-                // File information
-                MetadataFilename.Text = System.IO.Path.GetFileName(_currentFilePath) ?? "-";
-                MetadataDuration.Text = FormatTime(_mediaPlayer.Length);
+                // File Information
+                MetadataFilename.Text = mediaInfo.FileName;
+                MetadataDuration.Text = FormatTime(mediaInfo.Duration);
+                MetadataFormat.Text = mediaInfo.FileExtension;
+                MetadataStreamCount.Text = mediaInfo.TotalTrackCount.ToString();
 
-                // Get video size if available
-                uint width = 0, height = 0;
-                bool hasSize = _mediaPlayer.Size(0, ref width, ref height);
-                if (hasSize && width > 0 && height > 0)
+                // Video Track Information
+                if (mediaInfo.VideoTracks.Count > 0)
                 {
-                    MetadataResolution.Text = $"{width}x{height}";
+                    var videoTrack = mediaInfo.VideoTracks[0]; // Use first video track
+
+                    // Resolution
+                    MetadataResolution.Text = videoTrack.ResolutionString;
+
+                    // Frame Rate
+                    if (videoTrack.FrameRate > 0)
+                    {
+                        MetadataFPS.Text = $"{videoTrack.FrameRate:F2} fps";
+                        _frameDurationMs = 1000.0 / videoTrack.FrameRate;
+                    }
+                    else
+                    {
+                        MetadataFPS.Text = "-";
+                    }
+
+                    // Codec
+                    string codecInfo = videoTrack.Codec;
+                    if (!string.IsNullOrEmpty(videoTrack.CodecFourCC) && videoTrack.CodecFourCC != "Unknown")
+                    {
+                        codecInfo += $" ({videoTrack.CodecFourCC})";
+                    }
+                    MetadataVideoCodec.Text = codecInfo;
+
+                    // Bitrate
+                    MetadataVideoBitrate.Text = videoTrack.BitrateString;
                 }
                 else
                 {
-                    MetadataResolution.Text = "-";
+                    // Try to get video info from MediaPlayer properties as fallback
+                    uint width = 0, height = 0;
+                    bool hasSize = _mediaPlayer.Size(0, ref width, ref height);
+                    if (hasSize && width > 0 && height > 0)
+                    {
+                        MetadataResolution.Text = $"{width}x{height}";
+                    }
+                    else
+                    {
+                        MetadataResolution.Text = "-";
+                    }
+
+                    float fps = _mediaPlayer.Fps;
+                    if (fps > 0)
+                    {
+                        MetadataFPS.Text = $"{fps:F2} fps";
+                        _frameDurationMs = 1000.0 / fps;
+                    }
+                    else
+                    {
+                        MetadataFPS.Text = "-";
+                    }
+
+                    MetadataVideoCodec.Text = "-";
+                    MetadataVideoBitrate.Text = "-";
                 }
 
-                // Get frame rate if available (VLC provides fps property)
-                float fps = _mediaPlayer.Fps;
-                if (fps > 0)
+                // Audio Track Information
+                if (mediaInfo.AudioTracks.Count > 0)
                 {
-                    MetadataFPS.Text = $"{fps:F2}";
-                    _frameDurationMs = 1000.0 / fps;
+                    var audioTrack = mediaInfo.AudioTracks[0]; // Use first audio track
+
+                    // Codec
+                    string codecInfo = audioTrack.Codec;
+                    if (!string.IsNullOrEmpty(audioTrack.CodecFourCC) && audioTrack.CodecFourCC != "Unknown")
+                    {
+                        codecInfo += $" ({audioTrack.CodecFourCC})";
+                    }
+                    MetadataAudioCodec.Text = codecInfo;
+
+                    // Sample Rate
+                    MetadataAudioSampleRate.Text = audioTrack.SampleRateString;
+
+                    // Channels
+                    MetadataAudioChannels.Text = audioTrack.ChannelString;
+
+                    // Bitrate
+                    MetadataAudioBitrate.Text = audioTrack.BitrateString;
                 }
                 else
                 {
-                    MetadataFPS.Text = "-";
+                    MetadataAudioCodec.Text = "-";
+                    MetadataAudioSampleRate.Text = "-";
+                    MetadataAudioChannels.Text = "-";
+                    MetadataAudioBitrate.Text = "-";
                 }
 
-                // Get tracks
-                var tracks = media.Tracks;
-                int videoTrackCount = 0;
-                int audioTrackCount = 0;
+                Logger.Info($"Metadata extracted successfully: {mediaInfo.VideoTracks.Count} video, {mediaInfo.AudioTracks.Count} audio, {mediaInfo.SubtitleTracks.Count} subtitle tracks");
 
-                foreach (var track in tracks)
+                if (mediaInfo.VideoTracks.Count > 0)
                 {
-                    if (track.TrackType == TrackType.Video)
-                    {
-                        videoTrackCount++;
-                    }
-                    else if (track.TrackType == TrackType.Audio)
-                    {
-                        audioTrackCount++;
-                    }
+                    Logger.Debug($"  Video: {mediaInfo.VideoTracks[0]}");
                 }
 
-                // Basic codec information
-                MetadataVideoCodec.Text = videoTrackCount > 0 ? "Available" : "-";
-                MetadataVideoBitrate.Text = "-";
-
-                MetadataAudioCodec.Text = audioTrackCount > 0 ? "Available" : "-";
-                MetadataAudioSampleRate.Text = "-";
-                MetadataAudioChannels.Text = audioTrackCount > 0 ? audioTrackCount.ToString() + " track(s)" : "-";
-                MetadataAudioBitrate.Text = "-";
-
-                // Format information
-                string extension = System.IO.Path.GetExtension(_currentFilePath)?.ToUpper().TrimStart('.') ?? "-";
-                MetadataFormat.Text = extension;
-                MetadataStreamCount.Text = tracks.Length.ToString();
+                if (mediaInfo.AudioTracks.Count > 0)
+                {
+                    Logger.Debug($"  Audio: {mediaInfo.AudioTracks[0]}");
+                }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"Error retrieving metadata: {ex.Message}");
-                // Set defaults on error
+                Logger.Error($"Error retrieving metadata: {ex.Message}");
+                Logger.Debug($"Stack trace: {ex.StackTrace}");
+
+                // Set basic information on error
                 MetadataFilename.Text = System.IO.Path.GetFileName(_currentFilePath) ?? "-";
-                MetadataDuration.Text = "-";
+                MetadataFormat.Text = System.IO.Path.GetExtension(_currentFilePath)?.ToUpper().TrimStart('.') ?? "-";
+
+                // Try to at least get duration from player
+                if (_mediaPlayer != null && _mediaPlayer.Length > 0)
+                {
+                    MetadataDuration.Text = FormatTime(_mediaPlayer.Length);
+                }
+                else
+                {
+                    MetadataDuration.Text = "-";
+                }
+
+                // Reset other fields
                 MetadataResolution.Text = "-";
                 MetadataFPS.Text = "-";
                 MetadataVideoCodec.Text = "-";
@@ -612,16 +748,163 @@ namespace VideoPlayer
                 MetadataAudioSampleRate.Text = "-";
                 MetadataAudioChannels.Text = "-";
                 MetadataAudioBitrate.Text = "-";
-                MetadataFormat.Text = System.IO.Path.GetExtension(_currentFilePath)?.ToUpper().TrimStart('.') ?? "-";
                 MetadataStreamCount.Text = "-";
             }
         }
 
+        private void ResetMetadataDisplay()
+        {
+            MetadataFilename.Text = "-";
+            MetadataDuration.Text = "-";
+            MetadataResolution.Text = "-";
+            MetadataFPS.Text = "-";
+            MetadataVideoCodec.Text = "-";
+            MetadataVideoBitrate.Text = "-";
+            MetadataAudioCodec.Text = "-";
+            MetadataAudioSampleRate.Text = "-";
+            MetadataAudioChannels.Text = "-";
+            MetadataAudioBitrate.Text = "-";
+            MetadataFormat.Text = "-";
+            MetadataStreamCount.Text = "-";
+        }
+
+        // Volume control handlers
+        private void VolumeSlider_ValueChanged(object? sender, Avalonia.Controls.Primitives.RangeBaseValueChangedEventArgs e)
+        {
+            if (_mediaPlayer == null)
+                return;
+
+            int volume = (int)e.NewValue;
+            _mediaPlayer.Volume = volume;
+            VolumeText.Text = $"{volume}%";
+
+            Logger.Debug($"Volume changed to {volume}%");
+
+            // Update mute button if volume changes
+            if (volume == 0 && !_isMuted)
+            {
+                MuteButton.Content = "🔇";
+            }
+            else if (volume > 0 && !_isMuted)
+            {
+                MuteButton.Content = "🔊";
+            }
+        }
+
+        private void MuteButton_Click(object? sender, RoutedEventArgs e)
+        {
+            if (_mediaPlayer == null)
+                return;
+
+            _isMuted = !_isMuted;
+
+            if (_isMuted)
+            {
+                Logger.Info("Audio muted");
+                _volumeBeforeMute = (int)VolumeSlider.Value;
+                VolumeSlider.Value = 0;
+                _mediaPlayer.Volume = 0;
+                MuteButton.Content = "🔇";
+            }
+            else
+            {
+                Logger.Info("Audio unmuted");
+                VolumeSlider.Value = _volumeBeforeMute;
+                _mediaPlayer.Volume = _volumeBeforeMute;
+                MuteButton.Content = "🔊";
+            }
+        }
+
+        // Logger window handler
+        private void ShowLoggerButton_Click(object? sender, RoutedEventArgs e)
+        {
+            if (_loggerWindow == null || !_loggerWindow.IsVisible)
+            {
+                _loggerWindow = new LoggerWindow();
+                _loggerWindow.Show();
+                Logger.Info("Logger window opened from main window");
+            }
+            else
+            {
+                _loggerWindow.Activate();
+            }
+        }
+
+        // Playback rate handler
+        private void PlaybackRateButton_Click(object? sender, RoutedEventArgs e)
+        {
+            if (_mediaPlayer == null || sender is not Button button || button.Tag is not string rateString)
+                return;
+
+            if (float.TryParse(rateString, out float rate))
+            {
+                _currentPlaybackRate = rate;
+
+                // VLC supports negative playback rates for reverse playback
+                int result = _mediaPlayer.SetRate(rate);
+
+                if (result == 0)
+                {
+                    Logger.Info($"Playback rate changed to {rate}x");
+                    UpdatePlaybackRateButtons();
+                }
+                else
+                {
+                    Logger.Warning($"Failed to set playback rate to {rate}x (error code: {result})");
+                }
+            }
+        }
+
+        private void UpdatePlaybackRateButtons()
+        {
+            // Reset all buttons to default style
+            PlaybackRate1xButton.Background = new SolidColorBrush(Color.Parse("#4A4A4F"));
+            PlaybackRate2xButton.Background = new SolidColorBrush(Color.Parse("#4A4A4F"));
+            PlaybackRate4xButton.Background = new SolidColorBrush(Color.Parse("#4A4A4F"));
+
+            // Highlight the active playback rate button
+            if (Math.Abs(_currentPlaybackRate - 1.0f) < 0.01f)
+            {
+                PlaybackRate1xButton.Background = new SolidColorBrush(Color.Parse("#007ACC"));
+            }
+            else if (Math.Abs(_currentPlaybackRate - 2.0f) < 0.01f)
+            {
+                PlaybackRate2xButton.Background = new SolidColorBrush(Color.Parse("#007ACC"));
+            }
+            else if (Math.Abs(_currentPlaybackRate - 4.0f) < 0.01f)
+            {
+                PlaybackRate4xButton.Background = new SolidColorBrush(Color.Parse("#007ACC"));
+            }
+
+            Logger.Debug($"Playback rate buttons updated, current rate: {_currentPlaybackRate}x");
+        }
+
         protected override void OnClosed(EventArgs e)
         {
+            Logger.Info("Application closing - Cleaning up resources");
+
+            // Stop the timeline update timer
             _timelineUpdateTimer?.Stop();
+
+            // Close logger window if open
+            if (_loggerWindow != null && _loggerWindow.IsVisible)
+            {
+                Logger.Info("Closing logger window");
+                _loggerWindow.Close();
+                _loggerWindow = null;
+            }
+
+            // Detach VLC log event handler
+            if (_libVLC != null)
+            {
+                _libVLC.Log -= LibVLC_Log;
+            }
+
+            // Dispose media player and VLC
             _mediaPlayer?.Dispose();
             _libVLC?.Dispose();
+
+            Logger.Info("Application cleanup complete");
             base.OnClosed(e);
         }
     }

@@ -25,14 +25,14 @@
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
         </Style>
 
-        <Style Selector="Button:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="Button:pointerover">
             <Setter Property="Background" Value="#3E3E42"/>
-            <Setter Property="TextBlock.Foreground" Value="#FFFFFF"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
         </Style>
 
-        <Style Selector="Button:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Style Selector="Button:pressed">
             <Setter Property="Background" Value="#1E1E1E"/>
-            <Setter Property="TextBlock.Foreground" Value="#FFFFFF"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
         </Style>
 
         <Style Selector="Button:disabled">
@@ -208,7 +208,9 @@
                             TickFrequency="0.001"
                             IsSnapToTickEnabled="False"
                             ZIndex="0"
-                            IsHitTestVisible="True"
+                            PointerPressed="TimelineSlider_PointerPressed"
+                            PointerReleased="TimelineSlider_PointerReleased"
+                            PointerMoved="TimelineSlider_PointerMoved"
                             ValueChanged="TimelineSlider_ValueChanged"/>
 
                     <!-- Canvas for drawing timeline markers -->
@@ -276,7 +278,7 @@
                 BorderBrush="#3E3E42"
                 BorderThickness="0,1,0,0"
                 Padding="20,16">
-            <Grid RowDefinitions="Auto,Auto,Auto,Auto" ColumnDefinitions="*">
+            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*">
                 <!-- Main Controls Row -->
                 <StackPanel Grid.Row="0"
                            Orientation="Horizontal"
@@ -316,8 +318,7 @@
                 <StackPanel Grid.Row="1"
                            Orientation="Horizontal"
                            HorizontalAlignment="Center"
-                           Spacing="12"
-                           Margin="0,0,0,12">
+                           Spacing="12">
                     <TextBlock Text="Seek to time:"
                               Foreground="#A0A0A0"
                               FontSize="13"
@@ -339,93 +340,6 @@
                             Click="SeekToTimeButton_Click"
                             IsEnabled="False"
                             Background="#007ACC" />
-                </StackPanel>
-
-                <!-- Playback Rate Row -->
-                <StackPanel Grid.Row="2"
-                           Orientation="Horizontal"
-                           HorizontalAlignment="Center"
-                           Spacing="12"
-                           Margin="0,0,0,12">
-                    <TextBlock Text="Playback Rate:"
-                              Foreground="#A0A0A0"
-                              FontSize="13"
-                              VerticalAlignment="Center"/>
-
-                    <Button Name="PlaybackRate1xButton"
-                            Content="1x"
-                            Width="60"
-                            Height="32"
-                            Click="PlaybackRateButton_Click"
-                            Tag="1"
-                            Background="#007ACC"
-                            IsEnabled="False"/>
-
-                    <Button Name="PlaybackRate2xButton"
-                            Content="2x"
-                            Width="60"
-                            Height="32"
-                            Click="PlaybackRateButton_Click"
-                            Tag="2"
-                            IsEnabled="False"/>
-
-                    <Button Name="PlaybackRate4xButton"
-                            Content="4x"
-                            Width="60"
-                            Height="32"
-                            Click="PlaybackRateButton_Click"
-                            Tag="4"
-                            IsEnabled="False"/>
-
-                </StackPanel>
-
-                <!-- Volume and Logger Row -->
-                <StackPanel Grid.Row="3"
-                           Orientation="Horizontal"
-                           HorizontalAlignment="Center"
-                           Spacing="16">
-                    <!-- Volume Controls -->
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <Button Name="MuteButton"
-                                Content="🔊"
-                                Width="40"
-                                Height="32"
-                                Click="MuteButton_Click"
-                                IsEnabled="False"
-                                ToolTip.Tip="Mute/Unmute"/>
-
-                        <TextBlock Text="Volume:"
-                                  Foreground="#A0A0A0"
-                                  FontSize="13"
-                                  VerticalAlignment="Center"/>
-
-                        <Slider Name="VolumeSlider"
-                                Width="120"
-                                Height="32"
-                                Minimum="0"
-                                Maximum="100"
-                                Value="100"
-                                IsEnabled="False"
-                                TickFrequency="1"
-                                IsSnapToTickEnabled="False"
-                                ValueChanged="VolumeSlider_ValueChanged"/>
-
-                        <TextBlock Name="VolumeText"
-                                  Text="100%"
-                                  Foreground="#FFFFFF"
-                                  FontSize="12"
-                                  FontFamily="Consolas,Courier New"
-                                  Width="45"
-                                  VerticalAlignment="Center"/>
-                    </StackPanel>
-
-                    <!-- Logger Button -->
-                    <Button Name="ShowLoggerButton"
-                            Content="📋 Show Logger"
-                            Width="130"
-                            Height="32"
-                            Click="ShowLoggerButton_Click"
-                            Background="#007ACC"/>
                 </StackPanel>
             </Grid>
         </Border>
