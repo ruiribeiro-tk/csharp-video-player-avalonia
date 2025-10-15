@@ -1,0 +1,482 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vlc="clr-namespace:LibVLCSharp.Avalonia;assembly=LibVLCSharp.Avalonia"
+        x:Class="VideoPlayer.MainWindow"
+        Title="Video Player"
+        Width="1200"
+        Height="720"
+        MinWidth="800"
+        MinHeight="600"
+        CanResize="true"
+        WindowStartupLocation="CenterScreen"
+        Background="#1E1E1E">
+
+    <Window.Styles>
+        <Style Selector="Button">
+            <Setter Property="Background" Value="#4A4A4F"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#5A5A5F"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="CornerRadius" Value="4"/>
+            <Setter Property="Padding" Value="16,8"/>
+            <Setter Property="FontSize" Value="14"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+
+        <Style Selector="Button:pointerover">
+            <Setter Property="Background" Value="#3E3E42"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+
+        <Style Selector="Button:pressed">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+
+        <Style Selector="Button:disabled">
+            <Setter Property="Opacity" Value="0.5"/>
+            <Setter Property="Cursor" Value="Arrow"/>
+        </Style>
+
+        <Style Selector="TextBlock.title">
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style Selector="TextBlock.subtitle">
+            <Setter Property="Foreground" Value="#A0A0A0"/>
+            <Setter Property="FontSize" Value="12"/>
+        </Style>
+
+        <!-- Slider thumb styling -->
+        <Style Selector="Slider:horizontal /template/ Thumb">
+            <Setter Property="Width" Value="10"/>
+            <Setter Property="Height" Value="10"/>
+            <Setter Property="Background" Value="#FFFFFF"/>
+            <Setter Property="BorderBrush" Value="#FFFFFF"/>
+            <Setter Property="CornerRadius" Value="5"/>
+        </Style>
+
+        <Style Selector="Slider:horizontal /template/ Thumb:pointerover">
+            <Setter Property="Background" Value="#DDDDDD"/>
+        </Style>
+
+        <Style Selector="Slider:horizontal /template/ Thumb:pressed">
+            <Setter Property="Background" Value="#BBBBBB"/>
+        </Style>
+
+        <!-- Menu styling -->
+        <Style Selector="Menu">
+            <Setter Property="Background" Value="#F0F0F0"/>
+        </Style>
+
+        <Style Selector="MenuItem">
+            <Setter Property="Foreground" Value="#000000"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="Padding" Value="10,6"/>
+        </Style>
+
+        <Style Selector="MenuItem:pointerover">
+            <Setter Property="Background" Value="#3E3E42"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+
+        <Style Selector="MenuItem:selected">
+            <Setter Property="Background" Value="#252526"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+
+        <Style Selector="MenuItem:pressed">
+            <Setter Property="Background" Value="#1E1E1E"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+    </Window.Styles>
+
+    <DockPanel>
+        <!-- Top Menu Bar -->
+        <Menu DockPanel.Dock="Top">
+            <MenuItem Header="_File">
+                <MenuItem Header="_Open" Click="MenuOpen_Click" InputGesture="Ctrl+O">
+                    <MenuItem.Icon>
+                        <TextBlock Text="📁" FontSize="14"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+                <Separator/>
+                <MenuItem Header="E_xit" Click="MenuExit_Click" InputGesture="Alt+F4">
+                    <MenuItem.Icon>
+                        <TextBlock Text="✖" FontSize="14"/>
+                    </MenuItem.Icon>
+                </MenuItem>
+            </MenuItem>
+        </Menu>
+
+        <!-- Main Content Grid -->
+        <Grid RowDefinitions="*,Auto,Auto" ColumnDefinitions="*,Auto">
+            <!-- Video Player Section -->
+            <Grid Grid.Row="0"
+              Grid.Column="0"
+              Margin="0">
+            <Border Background="#000000"
+                    BorderBrush="#3E3E42"
+                    BorderThickness="0">
+                <vlc:VideoView Name="VideoView" />
+            </Border>
+
+            <!-- Overlay message when no video is loaded -->
+            <Border Name="NoVideoOverlay"
+                    Background="#1E1E1E"
+                    IsVisible="True">
+                <StackPanel VerticalAlignment="Center"
+                           HorizontalAlignment="Center"
+                           Spacing="20">
+                    <TextBlock Text="📹"
+                              FontSize="72"
+                              HorizontalAlignment="Center"
+                              Foreground="#606060"/>
+                    <TextBlock Text="No video loaded"
+                              FontSize="20"
+                              Foreground="#A0A0A0"
+                              HorizontalAlignment="Center"/>
+                    <TextBlock Text="Use File > Open to select a video"
+                              FontSize="14"
+                              Foreground="#707070"
+                              HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Timeline Section -->
+        <Border Grid.Row="1"
+                Grid.Column="0"
+                Background="#252526"
+                BorderBrush="#3E3E42"
+                BorderThickness="0,1,0,1"
+                Padding="20,12">
+            <Grid RowDefinitions="Auto,Auto,Auto" ColumnDefinitions="*">
+                <!-- Time Display and Markers -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="0,0,0,8">
+
+                    <StackPanel Grid.Column="1"
+                               Orientation="Horizontal"
+                               HorizontalAlignment="Center"
+                               Spacing="20">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="📍" Foreground="#00FF00" FontSize="12"/>
+                            <TextBlock Name="StartMarkerText"
+                                      Text="Start: 00:00:00"
+                                      Foreground="#A0A0A0"
+                                      FontSize="11"
+                                      FontFamily="Consolas,Courier New"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Column="0"
+                                Name="CurrentTimeText"
+                                Text="00:00:00"
+                                Foreground="#FFFFFF"
+                                FontSize="12"
+                                FontFamily="Consolas,Courier New"/>
+
+
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <TextBlock Text="📍" Foreground="#FF4444" FontSize="12"/>
+                            <TextBlock Name="EndMarkerText"
+                                      Text="End: 00:00:00"
+                                      Foreground="#A0A0A0"
+                                      FontSize="11"
+                                      FontFamily="Consolas,Courier New"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <TextBlock Grid.Column="2"
+                              Name="TotalTimeText"
+                              Text="00:00:00"
+                              Foreground="#FFFFFF"
+                              FontSize="12"
+                              FontFamily="Consolas,Courier New"/>
+                </Grid>
+
+                <!-- Timeline Slider with Markers -->
+                <Grid Grid.Row="1" ColumnDefinitions="*" Margin="0,0,0,8">
+                    <Slider Name="TimelineSlider"
+                            Minimum="0"
+                            Maximum="100"
+                            Value="0"
+                            IsEnabled="False"
+                            TickFrequency="0.001"
+                            IsSnapToTickEnabled="False"
+                            ZIndex="0"
+                            PointerPressed="TimelineSlider_PointerPressed"
+                            PointerReleased="TimelineSlider_PointerReleased"
+                            PointerMoved="TimelineSlider_PointerMoved"
+                            ValueChanged="TimelineSlider_ValueChanged"/>
+
+                    <!-- Canvas for drawing timeline markers -->
+                    <Canvas Name="TimelineMarkersCanvas"
+                            IsHitTestVisible="False"
+                            Height="30"
+                            ZIndex="10"
+                            VerticalAlignment="Center">
+                        <!-- Start Marker -->
+                        <Border Name="StartMarkerVisual"
+                                Width="3"
+                                Height="30"
+                                Background="#00FF00"
+                                Canvas.Left="0"
+                                Canvas.Top="0"
+                                IsVisible="False"/>
+
+                        <!-- End Marker -->
+                        <Border Name="EndMarkerVisual"
+                                Width="3"
+                                Height="30"
+                                Background="#FF4444"
+                                Canvas.Left="0"
+                                Canvas.Top="0"
+                                IsVisible="False"/>
+                    </Canvas>
+                </Grid>
+
+                <!-- Marker Control Buttons -->
+                <StackPanel Grid.Row="2"
+                           Orientation="Horizontal"
+                           HorizontalAlignment="Center"
+                           Spacing="8">
+                    <Button Name="SetStartMarkerButton"
+                            Content="🟢 Set Start"
+                            Width="110"
+                            Height="32"
+                            FontSize="12"
+                            Click="SetStartMarkerButton_Click"
+                            IsEnabled="False"/>
+
+                    <Button Name="SetEndMarkerButton"
+                            Content="🔴 Set End"
+                            Width="110"
+                            Height="32"
+                            FontSize="12"
+                            Click="SetEndMarkerButton_Click"
+                            IsEnabled="False"/>
+
+                    <Button Name="ResetMarkersButton"
+                            Content="↺ Reset"
+                            Width="90"
+                            Height="32"
+                            FontSize="12"
+                            Click="ResetMarkersButton_Click"
+                            IsEnabled="False"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Control Panel at the bottom -->
+        <Border Grid.Row="2"
+                Grid.Column="0"
+                Background="#252526"
+                BorderBrush="#3E3E42"
+                BorderThickness="0,1,0,0"
+                Padding="20,16">
+            <Grid RowDefinitions="Auto,Auto" ColumnDefinitions="*">
+                <!-- Main Controls Row -->
+                <StackPanel Grid.Row="0"
+                           Orientation="Horizontal"
+                           HorizontalAlignment="Center"
+                           Spacing="12"
+                           Margin="0,0,0,12">
+                    <Button Name="PreviousFrameButton"
+                            Content="⏮ Prev Frame"
+                            Width="120"
+                            Height="40"
+                            Click="PreviousFrameButton_Click"
+                            IsEnabled="False" />
+
+                    <Button Name="PlayPauseButton"
+                            Content="▶ Play"
+                            Width="120"
+                            Height="40"
+                            Click="PlayPauseButton_Click"
+                            IsEnabled="False" />
+
+                    <Button Name="NextFrameButton"
+                            Content="⏭ Next Frame"
+                            Width="120"
+                            Height="40"
+                            Click="NextFrameButton_Click"
+                            IsEnabled="False" />
+
+                    <Button Name="LoopButton"
+                            Content="🔁 Loop: OFF"
+                            Width="120"
+                            Height="40"
+                            Click="LoopButton_Click"
+                            IsEnabled="False" />
+                </StackPanel>
+
+                <!-- Time Seek Row -->
+                <StackPanel Grid.Row="1"
+                           Orientation="Horizontal"
+                           HorizontalAlignment="Center"
+                           Spacing="12">
+                    <TextBlock Text="Seek to time:"
+                              Foreground="#A0A0A0"
+                              FontSize="13"
+                              VerticalAlignment="Center"/>
+
+                    <TextBox Name="SeekTimeTextBox"
+                            Width="120"
+                            Height="32"
+                            FontFamily="Consolas,Courier New"
+                            FontSize="13"
+                            Watermark="HH:MM:SS"
+                            IsEnabled="False"
+                            VerticalContentAlignment="Center"/>
+
+                    <Button Name="SeekToTimeButton"
+                            Content="Go"
+                            Width="60"
+                            Height="32"
+                            Click="SeekToTimeButton_Click"
+                            IsEnabled="False"
+                            Background="#007ACC" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Metadata Panel (Right Side) -->
+        <Border Grid.Row="0"
+                Grid.RowSpan="3"
+                Grid.Column="1"
+                Width="300"
+                Background="#252526"
+                BorderBrush="#3E3E42"
+                BorderThickness="1,0,0,0"
+                Padding="16">
+            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Video Metadata"
+                              Foreground="#FFFFFF"
+                              FontSize="16"
+                              FontWeight="SemiBold"
+                              Margin="0,0,0,8"/>
+
+                    <!-- File Information -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="File Information"
+                                  Foreground="#007ACC"
+                                  FontSize="13"
+                                  FontWeight="SemiBold"/>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Filename:"/>
+                            <TextBlock Name="MetadataFilename"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      TextWrapping="Wrap"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Duration:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataDuration"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Resolution:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataResolution"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="FPS:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataFPS"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Video Track -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Video Track"
+                                  Foreground="#007ACC"
+                                  FontSize="13"
+                                  FontWeight="SemiBold"/>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Codec:"/>
+                            <TextBlock Name="MetadataVideoCodec"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Bitrate:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataVideoBitrate"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Audio Track -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Audio Track"
+                                  Foreground="#007ACC"
+                                  FontSize="13"
+                                  FontWeight="SemiBold"/>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Codec:"/>
+                            <TextBlock Name="MetadataAudioCodec"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Sample Rate:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataAudioSampleRate"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Channels:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataAudioChannels"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Bitrate:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataAudioBitrate"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Additional Information -->
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Additional Info"
+                                  Foreground="#007ACC"
+                                  FontSize="13"
+                                  FontWeight="SemiBold"/>
+
+                        <StackPanel Spacing="4">
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Format:"/>
+                            <TextBlock Name="MetadataFormat"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+
+                            <TextBlock Foreground="#A0A0A0" FontSize="11" Text="Stream Count:" Margin="0,4,0,0"/>
+                            <TextBlock Name="MetadataStreamCount"
+                                      Foreground="#FFFFFF"
+                                      FontSize="11"
+                                      Text="-"/>
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+    </Grid>
+    </DockPanel>
+
+</Window>
